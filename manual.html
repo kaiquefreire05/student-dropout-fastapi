@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Manual da API de Previsão de Evasão</title>
+  <style>
+    :root { color-scheme: light; --ink:#17212b; --muted:#52606d; --line:#d9e2ec; --accent:#0b7285; --soft:#f3f7f9; --code:#18242e; }
+    * { box-sizing:border-box; }
+    body { margin:0; font-family:system-ui,-apple-system,"Segoe UI",sans-serif; color:var(--ink); background:#eef3f5; line-height:1.55; }
+    main { max-width:1180px; margin:0 auto; padding:40px 24px 72px; background:#fff; min-height:100vh; }
+    h1 { margin:0 0 8px; font-size:clamp(2rem,4vw,3.2rem); line-height:1.1; }
+    h2 { margin-top:42px; padding-bottom:8px; border-bottom:2px solid var(--line); color:#123b46; }
+    h3 { margin-top:28px; color:#245563; }
+    p, li { max-width:90ch; }
+    .lead { color:var(--muted); font-size:1.08rem; }
+    .notice { padding:16px 18px; border-left:5px solid var(--accent); background:#e8f6f8; margin:24px 0; }
+    code { background:#edf2f5; border-radius:4px; padding:2px 5px; }
+    pre { overflow:auto; padding:18px; border-radius:6px; background:var(--code); color:#eff7fa; font-size:.9rem; }
+    pre code { padding:0; background:transparent; color:inherit; }
+    table { width:100%; border-collapse:collapse; margin:16px 0 24px; font-size:.94rem; }
+    th, td { text-align:left; vertical-align:top; padding:10px 11px; border:1px solid var(--line); }
+    th { background:#eaf1f3; color:#123b46; }
+    tr:nth-child(even) td { background:#fbfcfd; }
+    .toc { display:flex; flex-wrap:wrap; gap:8px; margin:24px 0 32px; }
+    .toc a { color:#075b6b; text-decoration:none; background:var(--soft); border:1px solid var(--line); padding:7px 10px; border-radius:4px; }
+    .small { color:var(--muted); font-size:.92rem; }
+    a { color:#075b6b; }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Manual da API de previsão de evasão estudantil</h1>
+    <p class="lead">Guia de execução manual e integração do front-end com a API FastAPI.</p>
+  </header>
+
+  <div class="notice"><strong>Importante:</strong> a API prevê <code>Dropout</code> (evasão) ou não evasão (<code>Graduate</code>/<code>Enrolled</code>). O modelo usa o alvo binário: <code>1 = Dropout</code> e <code>0 = Graduate ou Enrolled</code>.</div>
+
+  <nav class="toc" aria-label="Índice">
+    <a href="#executar">Executar</a><a href="#endpoints">Endpoints</a><a href="#inputs">Inputs</a><a href="#codigos">Códigos</a><a href="#predict">/predict</a><a href="#batch">/predict/batch</a><a href="#erros">Erros</a>
+  </nav>
+
+  <h2 id="executar">1. Executar manualmente</h2>
+  <h3>Pré-requisitos</h3>
+  <ul><li>Python 3.10 ou superior;</li><li><code>pip</code> instalado;</li><li>terminal aberto na raiz do projeto, onde está <code>requirements.txt</code>.</li></ul>
+  <h3>Linux/macOS</h3>
+  <pre><code>cd /caminho/para/student_dropout_fastapi
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt</code></pre>
+  <h3>Windows PowerShell</h3>
+  <pre><code>cd C:\caminho\para\student_dropout_fastapi
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt</code></pre>
+  <h3>Iniciar o servidor</h3>
+  <pre><code>python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload</code></pre>
+  <p><code>--reload</code> é recomendado durante o desenvolvimento. Para acesso por outros computadores da rede, use <code>--host 0.0.0.0</code>. Endereços: <a href="http://127.0.0.1:8000/">interface</a>, <a href="http://127.0.0.1:8000/docs">Swagger</a> e <a href="http://127.0.0.1:8000/redoc">ReDoc</a>.</p>
+  <p>Para verificar a instalação: <code>curl http://127.0.0.1:8000/health</code>. Para executar os testes: <code>python -m pytest tests -v</code>.</p>
+
+  <h2 id="endpoints">2. Endpoints</h2>
+  <table><thead><tr><th>Método</th><th>Caminho</th><th>Finalidade</th></tr></thead><tbody>
+    <tr><td><code>GET</code></td><td><code>/</code></td><td>Interface HTML de teste.</td></tr>
+    <tr><td><code>GET</code></td><td><code>/health</code></td><td>Verifica se a API e o modelo estão carregados.</td></tr>
+    <tr><td><code>GET</code></td><td><code>/model/info</code></td><td>Retorna features, métricas e informações do modelo.</td></tr>
+    <tr><td><code>POST</code></td><td><code>/predict</code></td><td>Prevê o risco de um estudante.</td></tr>
+    <tr><td><code>POST</code></td><td><code>/predict/batch</code></td><td>Prevê o risco de vários estudantes.</td></tr>
+  </tbody></table>
+  <p>As requisições <code>POST</code> devem usar <code>Content-Type: application/json</code>.</p>
+
+  <h2 id="inputs">3. Inputs do front-end</h2>
+  <p>O formulário deve coletar os 34 campos abaixo. Use campos de seleção para categorias e envie códigos numéricos, não textos. A API aceita nomes originais do dataset, como <code>"Marital status"</code>, ou nomes <code>snake_case</code>, como <code>"marital_status"</code>. Para um front-end novo, recomenda-se <code>snake_case</code>.</p>
+  <p>Campos <code>int</code> devem ser inteiros; campos <code>float</code> devem usar ponto decimal; indicadores usam <code>0</code> para não e <code>1</code> para sim. Recomenda-se enviar todos os campos, mesmo existindo valores padrão no schema.</p>
+
+  <h3>Dados de candidatura e perfil</h3>
+  <table><thead><tr><th>Campo técnico</th><th>Rótulo em português</th><th>Tipo e valores</th></tr></thead><tbody>
+    <tr><td><code>marital_status</code></td><td>Estado civil</td><td>int: 1 solteiro; 2 casado; 3 viúvo; 4 divorciado; 5 união de facto; 6 separado legalmente.</td></tr>
+    <tr><td><code>application_mode</code></td><td>Modo de candidatura</td><td>int: código definido pela UCI.</td></tr>
+    <tr><td><code>application_order</code></td><td>Ordem de escolha do curso</td><td>int: 0 primeira escolha até 9 última.</td></tr>
+    <tr><td><code>course</code></td><td>Curso</td><td>int: código definido pela UCI.</td></tr>
+    <tr><td><code>daytime_evening_attendance</code></td><td>Turno de frequência</td><td>int: 1 diurno; 0 noturno.</td></tr>
+    <tr><td><code>previous_qualification</code></td><td>Escolaridade anterior</td><td>int: código definido pela UCI.</td></tr>
+    <tr><td><code>nationality</code></td><td>Nacionalidade</td><td>int: 1 portuguesa; demais códigos na UCI.</td></tr>
+    <tr><td><code>age_at_enrollment</code></td><td>Idade na matrícula</td><td>int.</td></tr>
+    <tr><td><code>gender</code></td><td>Gênero</td><td>int: 1 masculino; 0 feminino.</td></tr>
+    <tr><td><code>international</code></td><td>Estudante internacional</td><td>int: 1 sim; 0 não.</td></tr>
+  </tbody></table>
+
+  <h3>Família e situação socioeconômica</h3>
+  <table><thead><tr><th>Campo técnico</th><th>Rótulo em português</th><th>Tipo e valores</th></tr></thead><tbody>
+    <tr><td><code>mothers_qualification</code></td><td>Escolaridade da mãe</td><td>int: código UCI.</td></tr>
+    <tr><td><code>fathers_qualification</code></td><td>Escolaridade do pai</td><td>int: código UCI.</td></tr>
+    <tr><td><code>mothers_occupation</code></td><td>Ocupação da mãe</td><td>int: código UCI.</td></tr>
+    <tr><td><code>fathers_occupation</code></td><td>Ocupação do pai</td><td>int: código UCI.</td></tr>
+    <tr><td><code>displaced</code></td><td>Aluno deslocado</td><td>int: 1 sim; 0 não.</td></tr>
+    <tr><td><code>educational_special_needs</code></td><td>Necessidades educacionais especiais</td><td>int: 1 sim; 0 não.</td></tr>
+    <tr><td><code>debtor</code></td><td>Possui dívida</td><td>int: 1 sim; 0 não.</td></tr>
+    <tr><td><code>tuition_fees_up_to_date</code></td><td>Mensalidades em dia</td><td>int: 1 sim; 0 não.</td></tr>
+    <tr><td><code>scholarship_holder</code></td><td>Bolsista</td><td>int: 1 sim; 0 não.</td></tr>
+  </tbody></table>
+
+  <h3>Desempenho acadêmico</h3>
+  <p>Os campos abaixo existem para o primeiro e para o segundo semestre. Substitua <code>1st</code> por primeiro semestre e <code>2nd</code> por segundo semestre:</p>
+  <table><thead><tr><th>Sufixo</th><th>Rótulo em português</th><th>Tipo</th></tr></thead><tbody>
+    <tr><td><code>credited</code></td><td>Disciplinas creditadas por equivalência</td><td>int</td></tr>
+    <tr><td><code>enrolled</code></td><td>Disciplinas matriculadas</td><td>int</td></tr>
+    <tr><td><code>evaluations</code></td><td>Avaliações realizadas</td><td>int</td></tr>
+    <tr><td><code>approved</code></td><td>Disciplinas aprovadas</td><td>int</td></tr>
+    <tr><td><code>grade</code></td><td>Média ponderada do semestre</td><td>float, normalmente 0 a 20</td></tr>
+    <tr><td><code>without_evaluations</code></td><td>Disciplinas sem avaliação</td><td>int</td></tr>
+  </tbody></table>
+  <p>Exemplos completos: <code>curricular_units_1st_sem_grade</code> = média do primeiro semestre; <code>curricular_units_2nd_sem_approved</code> = aprovadas no segundo semestre.</p>
+
+  <h3>Indicadores macroeconômicos</h3>
+  <table><thead><tr><th>Campo técnico</th><th>Rótulo em português</th><th>Tipo</th></tr></thead><tbody>
+    <tr><td><code>unemployment_rate</code></td><td>Taxa de desemprego</td><td>float, porcentagem</td></tr>
+    <tr><td><code>inflation_rate</code></td><td>Taxa de inflação</td><td>float, porcentagem</td></tr>
+    <tr><td><code>gdp</code></td><td>Variação do PIB</td><td>float, porcentagem</td></tr>
+  </tbody></table>
+
+  <p><strong>Diferença em relação à UCI:</strong> o dataset original informa 36 features. Esta API usa 34. <code>Previous qualification (grade)</code> não é aceito e <code>Target</code> não deve ser enviado: ele é o resultado histórico do treinamento.</p>
+
+  <h2 id="codigos">4. Códigos categóricos</h2>
+  <p>O front-end pode mostrar rótulos traduzidos e manter um dicionário <code>{codigo, label}</code>, mas deve enviar apenas o código original. Exemplos: <code>application_mode</code>: 1 primeira fase/concurso geral, 42 transferência, 43 mudança de curso; <code>course</code>: 9003 agronomia, 9119 engenharia informática, 9500 enfermagem; <code>previous_qualification</code>: 1 ensino secundário, 3 licenciatura, 4 mestrado, 5 doutorado; <code>nationality</code>: 1 portuguesa, 41 brasileira, 22 cabo-verdiana.</p>
+  <p>Consulte a tabela oficial <strong>Variables Table</strong> na <a href="https://archive.ics.uci.edu/dataset/697/predict+students+dropout+and+academic+success">página da UCI</a> para a lista completa. Os códigos são categorias nominais e não representam uma ordem numérica.</p>
+
+  <h2 id="predict">5. Requisição e retorno de <code>POST /predict</code></h2>
+  <pre><code>curl -X POST http://127.0.0.1:8000/predict \
+  -H "Content-Type: application/json" \
+  -d @student.json</code></pre>
+  <p>O arquivo <code>student.json</code> deve conter os 34 campos. Exemplo mínimo de estrutura:</p>
+  <pre><code>{
+  "marital_status": 1,
+  "application_mode": 8,
+  "application_order": 5,
+  "course": 2,
+  "daytime_evening_attendance": 1,
+  "previous_qualification": 1,
+  "nationality": 1,
+  "mothers_qualification": 13,
+  "fathers_qualification": 10,
+  "mothers_occupation": 6,
+  "fathers_occupation": 10,
+  "displaced": 1,
+  "educational_special_needs": 0,
+  "debtor": 0,
+  "tuition_fees_up_to_date": 1,
+  "gender": 1,
+  "scholarship_holder": 0,
+  "age_at_enrollment": 20,
+  "international": 0,
+  "curricular_units_1st_sem_credited": 0,
+  "curricular_units_1st_sem_enrolled": 6,
+  "curricular_units_1st_sem_evaluations": 6,
+  "curricular_units_1st_sem_approved": 4,
+  "curricular_units_1st_sem_grade": 12.5,
+  "curricular_units_1st_sem_without_evaluations": 0,
+  "curricular_units_2nd_sem_credited": 0,
+  "curricular_units_2nd_sem_enrolled": 6,
+  "curricular_units_2nd_sem_evaluations": 6,
+  "curricular_units_2nd_sem_approved": 5,
+  "curricular_units_2nd_sem_grade": 14.0,
+  "curricular_units_2nd_sem_without_evaluations": 0,
+  "unemployment_rate": 10.8,
+  "inflation_rate": 1.4,
+  "gdp": 1.74
+}</code></pre>
+  <h3>Resposta HTTP 200</h3>
+  <pre><code>{
+  "prediction": 0,
+  "prediction_label": "Non-Dropout (Permanência / Conclusão)",
+  "risk_level": "Baixo Risco",
+  "dropout_probability": 0.08,
+  "retention_probability": 0.92,
+  "model_used": "Logistic Regression",
+  "model_accuracy": 0.8667,
+  "timestamp": "2026-10-16T15:30:00.123456"
+}</code></pre>
+  <table><thead><tr><th>Campo</th><th>Interpretação</th></tr></thead><tbody>
+    <tr><td><code>prediction</code></td><td>1 = evasão prevista; 0 = não evasão prevista.</td></tr>
+    <tr><td><code>prediction_label</code></td><td>Texto da classe prevista.</td></tr>
+    <tr><td><code>risk_level</code></td><td>Baixo, Médio ou Alto Risco de Evasão.</td></tr>
+    <tr><td><code>dropout_probability</code></td><td>Probabilidade de evasão entre 0 e 1. Multiplique por 100 para exibir percentual.</td></tr>
+    <tr><td><code>retention_probability</code></td><td>Probabilidade de permanência/conclusão entre 0 e 1.</td></tr>
+    <tr><td><code>model_used</code></td><td>Modelo usado, atualmente Logistic Regression.</td></tr>
+    <tr><td><code>model_accuracy</code></td><td>Acurácia de teste, atualmente 0.8667; não é a probabilidade do estudante.</td></tr>
+    <tr><td><code>timestamp</code></td><td>Data/hora UTC em ISO 8601.</td></tr>
+  </tbody></table>
+
+  <h2 id="batch">6. Requisição e retorno de <code>POST /predict/batch</code></h2>
+  <p>Envie <code>{ "students": [ ... ] }</code>, com cada item contendo os mesmos 34 campos de um estudante. A posição é preservada: <code>predictions[i]</code> corresponde a <code>students[i]</code>.</p>
+  <pre><code>{
+  "total_students": 2,
+  "predictions": [
+    {
+      "prediction": 1,
+      "prediction_label": "Dropout (Evasão Escolar)",
+      "risk_level": "Alto Risco de Evasão",
+      "dropout_probability": 0.94,
+      "retention_probability": 0.06,
+      "model_used": "Logistic Regression",
+      "model_accuracy": 0.8667,
+      "timestamp": "2026-10-16T15:30:00.123456"
+    }
+  ],
+  "summary": {
+    "total_students": 2,
+    "predicted_dropout_count": 1,
+    "predicted_retention_count": 1,
+    "dropout_rate_percent": 50.0,
+    "average_dropout_probability": 0.48
+  },
+  "timestamp": "2026-10-16T15:30:00.123456"
+}</code></pre>
+  <p><code>summary</code> é um agregado da lista inteira, não uma nova predição.</p>
+
+  <h2 id="erros">7. Healthcheck e erros</h2>
+  <p><code>GET /health</code> retorna <code>status</code>, <code>model_loaded</code>, <code>model_name</code>, <code>model_accuracy</code> e <code>timestamp</code>. Considere o serviço pronto quando <code>status</code> for <code>healthy</code> e <code>model_loaded</code> for <code>true</code>.</p>
+  <table><thead><tr><th>HTTP</th><th>Situação</th><th>Formato típico</th></tr></thead><tbody>
+    <tr><td>400</td><td>Lote vazio.</td><td><code>{"detail":"A lista de estudantes não pode ser vazia."}</code></td></tr>
+    <tr><td>422</td><td>JSON inválido ou tipo incorreto.</td><td>Objeto <code>detail</code> com localização e mensagem de validação.</td></tr>
+    <tr><td>500</td><td>Falha durante a inferência.</td><td>Objeto <code>detail</code> com a mensagem do erro.</td></tr>
+    <tr><td>503</td><td>Modelo não carregado em <code>/model/info</code>.</td><td>Objeto <code>detail</code> informando indisponibilidade.</td></tr>
+  </tbody></table>
+  <p class="small">A probabilidade é uma estimativa estatística, não uma certeza ou diagnóstico individual. Fonte: <a href="https://doi.org/10.24432/C5MC89">Realinho et al. (2021), UCI Machine Learning Repository</a>.</p>
+
+  <h2 id="catalogo">8. Catálogo completo de códigos</h2>
+  <p>Esta seção contém todos os códigos categóricos oficiais usados pela API. O front-end pode usar o texto em português como <code>label</code> e enviar o número como <code>value</code>.</p>
+  <h3><code>application_mode</code> — modo de candidatura</h3>
+  <p><code>1</code> primeira fase — contingente geral; <code>2</code> Portaria nº 612/93; <code>5</code> primeira fase — contingente especial dos Açores; <code>7</code> titulares de outros cursos superiores; <code>10</code> Portaria nº 854-B/99; <code>15</code> estudante internacional — licenciatura; <code>16</code> primeira fase — contingente especial da Madeira; <code>17</code> segunda fase — contingente geral; <code>18</code> terceira fase — contingente geral; <code>26</code> Portaria nº 533-A/99, item b2 — plano diferente; <code>27</code> Portaria nº 533-A/99, item b3 — outra instituição; <code>39</code> maiores de 23 anos; <code>42</code> transferência; <code>43</code> mudança de curso; <code>44</code> diploma de especialização tecnológica; <code>51</code> mudança de instituição/curso; <code>53</code> diploma de ciclo curto; <code>57</code> mudança de instituição/curso — internacional.</p>
+  <h3><code>course</code> — curso</h3>
+  <p><code>33</code> tecnologias de produção de biocombustíveis; <code>171</code> design de animação e multimídia; <code>8014</code> serviço social — noturno; <code>9003</code> agronomia; <code>9070</code> design de comunicação; <code>9085</code> enfermagem veterinária; <code>9119</code> engenharia informática; <code>9130</code> equinicultura; <code>9147</code> gestão; <code>9238</code> serviço social; <code>9254</code> turismo; <code>9500</code> enfermagem; <code>9556</code> higiene oral; <code>9670</code> publicidade e marketing; <code>9773</code> jornalismo e comunicação; <code>9853</code> educação básica; <code>9991</code> gestão — noturno.</p>
+  <h3><code>previous_qualification</code> — escolaridade anterior</h3>
+  <p><code>1</code> ensino secundário; <code>2</code> bacharelado; <code>3</code> licenciatura; <code>4</code> mestrado; <code>5</code> doutorado; <code>6</code> frequência do ensino superior; <code>9</code> 12º ano incompleto; <code>10</code> 11º ano incompleto; <code>12</code> outra formação — 11º ano; <code>14</code> 10º ano; <code>15</code> 10º ano incompleto; <code>19</code> ensino básico — 3º ciclo ou equivalente; <code>38</code> ensino básico — 2º ciclo ou equivalente; <code>39</code> especialização tecnológica; <code>40</code> licenciatura — 1º ciclo; <code>42</code> curso técnico superior profissional; <code>43</code> mestrado — 2º ciclo.</p>
+  <h3><code>nationality</code> — nacionalidade</h3>
+  <p><code>1</code> portuguesa; <code>2</code> alemã; <code>6</code> espanhola; <code>11</code> italiana; <code>13</code> neerlandesa; <code>14</code> inglesa; <code>17</code> lituana; <code>21</code> angolana; <code>22</code> cabo-verdiana; <code>24</code> guineense; <code>25</code> moçambicana; <code>26</code> são-tomense; <code>32</code> turca; <code>41</code> brasileira; <code>62</code> romena; <code>100</code> moldava; <code>101</code> mexicana; <code>103</code> ucraniana; <code>105</code> russa; <code>108</code> cubana; <code>109</code> colombiana.</p>
+  <h3><code>mothers_qualification</code> — escolaridade da mãe</h3>
+  <p><code>1</code> secundário — 12º ano ou equivalente; <code>2</code> bacharelado; <code>3</code> licenciatura; <code>4</code> mestrado; <code>5</code> doutorado; <code>6</code> frequência do ensino superior; <code>9</code> 12º ano incompleto; <code>10</code> 11º ano incompleto; <code>11</code> 7º ano antigo; <code>12</code> outra formação — 11º ano; <code>14</code> 10º ano; <code>18</code> curso geral de comércio; <code>19</code> básico — 3º ciclo ou equivalente; <code>22</code> curso técnico-profissional; <code>26</code> 7º ano; <code>27</code> 2º ciclo do ensino secundário; <code>29</code> 9º ano incompleto; <code>30</code> 8º ano; <code>34</code> desconhecido; <code>35</code> não sabe ler nem escrever; <code>36</code> sabe ler, mas não concluiu o 4º ano; <code>37</code> básico — 1º ciclo ou equivalente; <code>38</code> básico — 2º ciclo ou equivalente; <code>39</code> especialização tecnológica; <code>40</code> licenciatura — 1º ciclo; <code>41</code> estudos superiores especializados; <code>42</code> curso técnico superior profissional; <code>43</code> mestrado — 2º ciclo; <code>44</code> doutorado — 3º ciclo.</p>
+  <h3><code>fathers_qualification</code> — escolaridade do pai</h3>
+  <p><code>1</code> secundário — 12º ano ou equivalente; <code>2</code> bacharelado; <code>3</code> licenciatura; <code>4</code> mestrado; <code>5</code> doutorado; <code>6</code> frequência do ensino superior; <code>9</code> 12º ano incompleto; <code>10</code> 11º ano incompleto; <code>11</code> 7º ano antigo; <code>12</code> outra formação — 11º ano; <code>13</code> 2º ano do secundário complementar; <code>14</code> 10º ano; <code>18</code> curso geral de comércio; <code>19</code> básico — 3º ciclo; <code>20</code> curso complementar do secundário; <code>22</code> técnico-profissional; <code>25</code> curso complementar incompleto; <code>26</code> 7º ano; <code>27</code> 2º ciclo do secundário; <code>29</code> 9º ano incompleto; <code>30</code> 8º ano; <code>31</code> administração e comércio; <code>33</code> contabilidade e administração complementar; <code>34</code> desconhecido; <code>35</code> não sabe ler nem escrever; <code>36</code> sabe ler, mas não concluiu o 4º ano; <code>37</code> básico — 1º ciclo; <code>38</code> básico — 2º ciclo; <code>39</code> especialização tecnológica; <code>40</code> licenciatura; <code>41</code> estudos superiores especializados; <code>42</code> curso técnico superior profissional; <code>43</code> mestrado; <code>44</code> doutorado.</p>
+  <h3><code>mothers_occupation</code> — ocupação da mãe</h3>
+  <p><code>0</code> estudante; <code>1</code> representantes do poder legislativo, diretores e gestores; <code>2</code> especialistas intelectuais e científicos; <code>3</code> técnicos e profissionais intermediários; <code>4</code> pessoal administrativo; <code>5</code> serviços pessoais, segurança e vendedores; <code>6</code> agricultores e trabalhadores qualificados da agricultura, pesca e silvicultura; <code>7</code> trabalhadores qualificados da indústria, construção e artesanato; <code>8</code> operadores de instalações, máquinas e montagem; <code>9</code> trabalhadores não qualificados; <code>10</code> forças armadas; <code>90</code> outra situação; <code>99</code> sem informação; <code>122</code> profissionais da saúde; <code>123</code> professores; <code>125</code> especialistas em TIC; <code>131</code> técnicos de ciência e engenharia; <code>132</code> técnicos de saúde; <code>134</code> técnicos de serviços jurídicos, sociais, esportivos e culturais; <code>141</code> funcionários de escritório e secretários; <code>143</code> operadores de dados, contabilidade e finanças; <code>144</code> apoio administrativo; <code>151</code> serviços pessoais; <code>152</code> vendedores; <code>153</code> cuidadores pessoais; <code>171</code> construção, exceto eletricistas; <code>173</code> impressão, instrumentos de precisão, joalheria e artesanato; <code>175</code> alimentos, madeira, vestuário e outros ofícios; <code>191</code> limpeza; <code>192</code> agricultura e produção animal não qualificada; <code>193</code> extração, construção, indústria e transporte não qualificados; <code>194</code> auxiliares de preparação de refeições.</p>
+  <h3><code>fathers_occupation</code> — ocupação do pai</h3>
+  <p><code>0</code> estudante; <code>1</code> representantes do poder legislativo, diretores e gestores; <code>2</code> especialistas intelectuais e científicos; <code>3</code> técnicos e profissionais intermediários; <code>4</code> pessoal administrativo; <code>5</code> serviços pessoais, segurança e vendedores; <code>6</code> agricultores e trabalhadores qualificados da agricultura, pesca e silvicultura; <code>7</code> trabalhadores qualificados da indústria, construção e artesanato; <code>8</code> operadores de instalações, máquinas e montagem; <code>9</code> trabalhadores não qualificados; <code>10</code> forças armadas; <code>90</code> outra situação; <code>99</code> sem informação; <code>101</code> oficiais das forças armadas; <code>102</code> sargentos das forças armadas; <code>103</code> outro pessoal das forças armadas; <code>112</code> diretores administrativos e comerciais; <code>114</code> diretores de hotéis, restauração, comércio e outros serviços; <code>121</code> especialistas em ciências físicas, matemática e engenharia; <code>122</code> profissionais da saúde; <code>123</code> professores; <code>124</code> especialistas em finanças, contabilidade e relações públicas; <code>131</code> técnicos de ciência e engenharia; <code>132</code> técnicos de saúde; <code>134</code> técnicos de serviços jurídicos, sociais, esportivos e culturais; <code>135</code> técnicos de TIC; <code>141</code> funcionários de escritório e secretários; <code>143</code> operadores de dados, contabilidade e finanças; <code>144</code> apoio administrativo; <code>151</code> serviços pessoais; <code>152</code> vendedores; <code>153</code> cuidadores pessoais; <code>154</code> proteção e segurança; <code>161</code> agricultores orientados ao mercado; <code>163</code> agricultores e pescadores de subsistência; <code>171</code> construção, exceto eletricistas; <code>172</code> metalurgia e metalomecânica; <code>174</code> eletricidade e eletrônica; <code>175</code> alimentos, madeira, vestuário e outros ofícios; <code>181</code> instalações fixas e máquinas; <code>182</code> montagem; <code>183</code> condutores e operadores móveis; <code>192</code> agricultura e produção animal não qualificada; <code>193</code> extração, construção, indústria e transporte não qualificados; <code>194</code> auxiliares de preparação de refeições; <code>195</code> vendedores ambulantes e prestadores de serviços de rua.</p>
+  <p class="small">Os demais campos são binários, contagens, notas ou indicadores macroeconômicos e já estão completamente descritos nas tabelas de inputs; não possuem códigos categóricos adicionais.</p>
+</main>
+</body>
+</html>
