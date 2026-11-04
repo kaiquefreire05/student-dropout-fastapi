@@ -1,0 +1,23 @@
+{
+  "python.defaultInterpreterPath": "C:\\Users\\KAIQUEFREIREDOSSANTO\\AppData\\Local\\Programs\\Python\\Python311\\python.exe",
+  "python.terminal.activateEnvironment": true,
+  "python.testing.pytestArgs": [
+    "tests"
+  ],
+  "python.testing.unittestEnabled": false,
+  "python.testing.pytestEnabled": true,
+  "chat.tools.terminal.autoApprove": {
+    "/^git init && git remote add origin git@github\\.com:kaiquefreire05/student-dropout-fastapi\\.git && git status --short && git remote -v$/": {
+      "approve": true,
+      "matchCommandLine": true
+    },
+    "/^git ls-remote origin HEAD refs/heads/main refs/heads/master; find \\. -maxdepth 3 -type f -not -path '\\./\\.git/\\*' -printf '%p %s bytes\\\\n' \\| sort$/": {
+      "approve": true,
+      "matchCommandLine": true
+    },
+    "/^git fetch origin main && git log --oneline --decorate -5 origin/main && git ls-tree --name-only -r origin/main$/": {
+      "approve": true,
+      "matchCommandLine": true
+    }
+  }
+}
